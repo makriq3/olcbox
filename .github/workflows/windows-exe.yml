@@ -1,9 +1,13 @@
-name: Build Olcbox Releases
+name: Build Olcbox Android
 
 on:
   workflow_dispatch:
   push:
     branches: [ main ]
+
+concurrency:
+  group: build-olcbox-android-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -16,170 +20,6 @@ env:
   MAGE_VERSION: "v1.17.1"
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout olcbox
-        uses: actions/checkout@v4
-        with:
-          path: olcbox
-
-      - name: Checkout olcrtc
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.OLCRTC_REPOSITORY }}
-          ref: ${{ env.OLCRTC_REF }}
-          path: olcrtc
-          submodules: recursive
-
-      - name: Setup JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          architecture: x64
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: olcrtc/go.sum
-
-      - name: Build Windows EXE
-        shell: pwsh
-        working-directory: olcbox
-        run: |
-          $env:OLCRTC_REPO="${{ github.workspace }}\olcrtc"
-          .\gradlew.bat :desktopApp:packageReleaseExe --stacktrace
-
-      - name: Prepare asset
-        shell: pwsh
-        working-directory: olcbox
-        run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          $exe = Get-ChildItem "desktopApp/build/compose/binaries/main-release/exe/*.exe" | Select-Object -First 1
-          Copy-Item $exe.FullName "dist/Olcbox-windows-amd64.exe"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Olcbox-windows-amd64-exe
-          path: olcbox/dist/Olcbox-windows-amd64.exe
-
-  build-macos:
-    runs-on: macos-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout olcbox
-        uses: actions/checkout@v4
-        with:
-          path: olcbox
-
-      - name: Checkout olcrtc
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.OLCRTC_REPOSITORY }}
-          ref: ${{ env.OLCRTC_REF }}
-          path: olcrtc
-          submodules: recursive
-
-      - name: Setup JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: olcrtc/go.sum
-
-      - name: Build macOS DMG
-        working-directory: olcbox
-        run: |
-          export OLCRTC_REPO="${{ github.workspace }}/olcrtc"
-          ./gradlew :desktopApp:packageReleaseDmg --stacktrace
-
-      - name: Prepare asset
-        working-directory: olcbox
-        run: |
-          mkdir -p dist
-          cp desktopApp/build/compose/binaries/main-release/dmg/*.dmg dist/Olcbox-macos.dmg
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Olcbox-macos-dmg
-          path: olcbox/dist/Olcbox-macos.dmg
-
-  build-linux:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout olcbox
-        uses: actions/checkout@v4
-        with:
-          path: olcbox
-
-      - name: Checkout olcrtc
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.OLCRTC_REPOSITORY }}
-          ref: ${{ env.OLCRTC_REF }}
-          path: olcrtc
-          submodules: recursive
-
-      - name: Install Linux packaging deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y file
-
-      - name: Setup JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: olcrtc/go.sum
-
-      - name: Setup appimagetool
-        run: |
-          curl -L -o /tmp/appimagetool.AppImage \
-            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x /tmp/appimagetool.AppImage
-
-      - name: Build Linux AppImage
-        working-directory: olcbox
-        run: |
-          export OLCRTC_REPO="${{ github.workspace }}/olcrtc"
-          export APPIMAGETOOL=/tmp/appimagetool.AppImage
-          export APPIMAGE_EXTRACT_AND_RUN=1
-          ./gradlew :desktopApp:packageReleaseLinuxAppImage --stacktrace
-
-      - name: Prepare asset
-        working-directory: olcbox
-        run: |
-          mkdir -p dist
-          cp desktopApp/build/compose/binaries/main-release/appimage/*.AppImage dist/Olcbox-linux-amd64.AppImage
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Olcbox-linux-amd64-appimage
-          path: olcbox/dist/Olcbox-linux-amd64.AppImage
-
   build-android:
     runs-on: ubuntu-latest
     permissions:
@@ -297,9 +137,6 @@ jobs:
     permissions:
       contents: write
     needs:
-      - build-windows
-      - build-macos
-      - build-linux
       - build-android
 
     steps:
@@ -321,7 +158,7 @@ jobs:
             echo "No release assets found"
             exit 1
           fi
-          release_notes="Latest desktop and Android builds from main at ${GITHUB_SHA}."
+          release_notes="Latest Android build from main at ${GITHUB_SHA}."
 
           if gh release view nightly >/dev/null 2>&1; then
             mapfile -t existing_asset_ids < <(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/nightly" --jq '.assets[].id')
@@ -330,14 +167,14 @@ jobs:
             done
 
             gh release edit nightly \
-              --title "Nightly Olcbox builds" \
+              --title "Nightly Olcbox Android build" \
               --notes "$release_notes" \
               --prerelease
             gh release upload nightly "${assets[@]}" --clobber
           else
             gh release create nightly "${assets[@]}" \
               --target "$GITHUB_SHA" \
-              --title "Nightly Olcbox builds" \
+              --title "Nightly Olcbox Android build" \
               --notes "$release_notes" \
               --prerelease
           fi
