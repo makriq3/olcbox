@@ -9,7 +9,8 @@ permissions:
   contents: read
 
 env:
-  OLCRTC_REF: 880e3862441ecbf4a8cb05e49df7a50dc2af0408
+  OLCRTC_REPOSITORY: makriq3/olcrtc
+  OLCRTC_REF: 092763627530f19225a9b1c61b597ffd4268db14
   GO_VERSION: "1.25.0"
   GOMOBILE_VERSION: "v0.0.0-20260410095206-2cfb76559b7b"
   MAGE_VERSION: "v1.17.1"
@@ -29,7 +30,7 @@ jobs:
       - name: Checkout olcrtc
         uses: actions/checkout@v4
         with:
-          repository: openlibrecommunity/olcrtc
+          repository: ${{ env.OLCRTC_REPOSITORY }}
           ref: ${{ env.OLCRTC_REF }}
           path: olcrtc
           submodules: recursive
@@ -82,7 +83,7 @@ jobs:
       - name: Checkout olcrtc
         uses: actions/checkout@v4
         with:
-          repository: openlibrecommunity/olcrtc
+          repository: ${{ env.OLCRTC_REPOSITORY }}
           ref: ${{ env.OLCRTC_REF }}
           path: olcrtc
           submodules: recursive
@@ -131,7 +132,7 @@ jobs:
       - name: Checkout olcrtc
         uses: actions/checkout@v4
         with:
-          repository: openlibrecommunity/olcrtc
+          repository: ${{ env.OLCRTC_REPOSITORY }}
           ref: ${{ env.OLCRTC_REF }}
           path: olcrtc
           submodules: recursive
@@ -200,7 +201,7 @@ jobs:
       - name: Checkout olcrtc
         uses: actions/checkout@v4
         with:
-          repository: openlibrecommunity/olcrtc
+          repository: ${{ env.OLCRTC_REPOSITORY }}
           ref: ${{ env.OLCRTC_REF }}
           path: olcrtc
           submodules: recursive
