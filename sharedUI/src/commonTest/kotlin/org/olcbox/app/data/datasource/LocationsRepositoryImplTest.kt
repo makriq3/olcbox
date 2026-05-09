@@ -1,5 +1,11 @@
 package org.olcbox.app.data.datasource
 
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import org.olcbox.app.data.model.LocationBundleV4
 import org.olcbox.app.data.model.LocationConfig
@@ -220,6 +226,48 @@ class LocationsRepositoryImplTest {
         assertEquals(subscriptionMetadata, imported.locations[1].metadata?.subscription)
     }
 
+    @Test
+    fun rejectsHttpSubscriptionImportsAndKeepsExistingLocationsUntouched() = runTest {
+        val existing = LocationEntry.from(
+            "existing",
+            LocationConfig("Existing", "room-existing", "k".repeat(64), LocationConfig.PROVIDER_JAZZ)
+        )
+        val source = FakeLocationsDataSource(
+            stored = LocationBundleV4(
+                activeLocationId = "existing",
+                locations = listOf(existing)
+            )
+        )
+
+        LocationsRepositoryImpl(source).importText("http://example.com/sub.txt")
+
+        val stored = source.stored
+        assertNotNull(stored)
+        assertEquals(listOf("existing"), stored.locations.map { it.storageId })
+        assertEquals("existing", stored.activeLocationId)
+    }
+
+    @Test
+    fun importsHttpsSubscriptionAndStoresSourceUrl() = runTest {
+        val source = FakeLocationsDataSource()
+        val client = HttpClient(MockEngine { request ->
+            assertEquals("https://example.com/sub.txt", request.url.toString())
+            respond(
+                content = "olcrtc://wbstream?datachannel@room-01#${"a".repeat(64)}%android-01${'$'}RU / secure",
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", ContentType.Text.Plain.toString())
+            )
+        })
+
+        LocationsRepositoryImpl(source, client).importText("https://example.com/sub.txt")
+
+        val stored = source.stored
+        assertNotNull(stored)
+        assertEquals("https://example.com/sub.txt", stored.locations.single().subscriptionUrl)
+        assertEquals("room-01", stored.locations.single().location.id)
+    }
+
+    @Test
     fun importUpdatesMatchingStorageIdsAndAppendsNewLocations() = runTest {
         val source = FakeLocationsDataSource(
             stored = LocationBundleV4(

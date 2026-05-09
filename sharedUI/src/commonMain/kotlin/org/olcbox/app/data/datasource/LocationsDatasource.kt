@@ -207,7 +207,7 @@ class LocationsRepositoryImpl(
     private suspend fun resolveImportSource(text: String): ImportSource? {
         if (text.isBlank()) return null
 
-        if (!text.isHttpUrl()) {
+        if (!text.isRemoteUrl()) {
             return ImportSource(content = text)
         }
 
@@ -218,6 +218,8 @@ class LocationsRepositoryImpl(
     }
 
     private suspend fun downloadTextFromUrl(url: String): String? {
+        if (!url.isRemoteUrl()) return null
+
         val response = runCatching {
             httpClient.get(url) {
                 headers {
@@ -238,9 +240,8 @@ class LocationsRepositoryImpl(
         }.getOrNull()?.takeIf { it.isNotBlank() }
     }
 
-    private fun String.isHttpUrl(): Boolean {
-        val value = trim().lowercase()
-        return value.startsWith("http://") || value.startsWith("https://")
+    private fun String.isRemoteUrl(): Boolean {
+        return trim().lowercase().startsWith("https://")
     }
 
     private suspend fun migrateLegacyBundle(): LocationBundleV4 {

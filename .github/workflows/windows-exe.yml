@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+env:
+  OLCRTC_REF: 880e3862441ecbf4a8cb05e49df7a50dc2af0408
+  GO_VERSION: "1.25.0"
+  GOMOBILE_VERSION: "v0.0.0-20260410095206-2cfb76559b7b"
+  MAGE_VERSION: "v1.17.1"
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -24,7 +30,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: openlibrecommunity/olcrtc
-          ref: master
+          ref: ${{ env.OLCRTC_REF }}
           path: olcrtc
           submodules: recursive
 
@@ -38,7 +44,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
+          go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: olcrtc/go.sum
 
       - name: Build Windows EXE
@@ -77,7 +83,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: openlibrecommunity/olcrtc
-          ref: master
+          ref: ${{ env.OLCRTC_REF }}
           path: olcrtc
           submodules: recursive
 
@@ -90,7 +96,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
+          go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: olcrtc/go.sum
 
       - name: Build macOS DMG
@@ -126,7 +132,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: openlibrecommunity/olcrtc
-          ref: master
+          ref: ${{ env.OLCRTC_REF }}
           path: olcrtc
           submodules: recursive
 
@@ -144,7 +150,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
+          go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: olcrtc/go.sum
 
       - name: Setup appimagetool
@@ -195,7 +201,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: openlibrecommunity/olcrtc
-          ref: master
+          ref: ${{ env.OLCRTC_REF }}
           path: olcrtc
           submodules: recursive
 
@@ -208,7 +214,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
+          go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: olcrtc/go.sum
 
       - name: Setup Android SDK
@@ -224,8 +230,8 @@ jobs:
       - name: Install Go mobile tooling
         run: |
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install github.com/magefile/mage@latest
+          go install golang.org/x/mobile/cmd/gomobile@${GOMOBILE_VERSION}
+          go install github.com/magefile/mage@${MAGE_VERSION}
 
       - name: Initialize gomobile
         working-directory: olcrtc
@@ -234,7 +240,14 @@ jobs:
           export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
           gomobile init
 
-      - name: Configure Android release signing
+      - name: Validate Android release manifest hardening
+        working-directory: olcbox
+        run: |
+          grep -q 'android:allowBackup="false"' androidApp/src/main/AndroidManifest.xml
+          grep -q 'android:usesCleartextTraffic="false"' androidApp/src/main/AndroidManifest.xml
+          grep -q 'cleartextTrafficPermitted="false"' androidApp/src/main/res/xml/network_security_config.xml
+
+      - name: Configure Android signing mode
         working-directory: olcbox
         run: |
           if [ -n "${ANDROID_RELEASE_KEYSTORE_BASE64}" ] &&
@@ -248,31 +261,35 @@ jobs:
           keyAlias=${ANDROID_RELEASE_KEY_ALIAS}
           keyPassword=${ANDROID_RELEASE_KEY_PASSWORD}
           EOF
+            echo "ANDROID_APK_TASK=:androidApp:assembleRelease" >> "$GITHUB_ENV"
+            echo "ANDROID_APK_PATH=androidApp/build/outputs/apk/release" >> "$GITHUB_ENV"
+            echo "ANDROID_APK_NAME=Olcbox-android-release.apk" >> "$GITHUB_ENV"
           else
-            echo "Android production APK requires signing secrets:"
-            echo "ANDROID_RELEASE_KEYSTORE_BASE64, ANDROID_RELEASE_STORE_PASSWORD, ANDROID_RELEASE_KEY_ALIAS, ANDROID_RELEASE_KEY_PASSWORD"
-            exit 1
+            echo "Release signing secrets missing; building debug APK instead."
+            echo "ANDROID_APK_TASK=:androidApp:assembleDebug" >> "$GITHUB_ENV"
+            echo "ANDROID_APK_PATH=androidApp/build/outputs/apk/debug" >> "$GITHUB_ENV"
+            echo "ANDROID_APK_NAME=Olcbox-android-debug.apk" >> "$GITHUB_ENV"
           fi
 
-      - name: Build production APK
+      - name: Build Android APK
         working-directory: olcbox
         run: |
           export OLCRTC_REPO="${{ github.workspace }}/olcrtc"
           export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}"
           export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
-          ./gradlew :sharedUI:jvmTest :androidApp:assembleRelease --stacktrace
+          ./gradlew :sharedUI:jvmTest "${ANDROID_APK_TASK}" --stacktrace
 
-      - name: Prepare Android release assets
+      - name: Prepare Android APK asset
         working-directory: olcbox
         run: |
           mkdir -p dist
-          cp androidApp/build/outputs/apk/release/*.apk dist/Olcbox-android-release.apk
+          cp "${ANDROID_APK_PATH}"/*.apk "dist/${ANDROID_APK_NAME}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: Olcbox-android-apk
-          path: olcbox/dist/Olcbox-android-release.apk
+          path: olcbox/dist/${{ env.ANDROID_APK_NAME }}
 
   publish-nightly:
     runs-on: ubuntu-latest
